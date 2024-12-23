@@ -43,7 +43,6 @@ class TaskListPage extends StatefulWidget {
 
 class TaskListPageState extends State<TaskListPage> {
   List<Map<String, dynamic>> tasks = [];
-  List<Map<String, dynamic>> completedTasks = [];
 
   void _navigateToAddTaskPage() async {
     final newTask = await Navigator.push(
@@ -57,10 +56,13 @@ class TaskListPageState extends State<TaskListPage> {
       setState(() {
         tasks.add(newTask);
         tasks.sort((a, b) {
-          // Priority: Urgent + Important, Urgent, Important, None
-          int aPriority = (a['urgent'] ? 2 : 0) + (a['important'] ? 1 : 0);
-          int bPriority = (b['urgent'] ? 2 : 0) + (b['important'] ? 1 : 0);
-          return bPriority.compareTo(aPriority);
+          if (b['important'] && b['urgent']) return 1;
+          if (a['important'] && a['urgent']) return -1;
+          if (b['urgent']) return 1;
+          if (a['urgent']) return -1;
+          if (b['important']) return 1;
+          if (a['important']) return -1;
+          return 0;
         });
       });
     }
@@ -68,6 +70,9 @@ class TaskListPageState extends State<TaskListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final completedTasks = tasks.where((task) => task['completed']).toList();
+    final pendingTasks = tasks.where((task) => !task['completed']).toList();
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -82,101 +87,15 @@ class TaskListPageState extends State<TaskListPage> {
           ],
           bottom: const TabBar(
             tabs: [
-              Tab(text: 'Tasks'),
+              Tab(text: 'Pending Tasks'),
               Tab(text: 'Completed Tasks'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            tasks.isEmpty
-                ? const Center(
-              child: Text(
-                'No tasks yet. Add a new task!',
-                style: TextStyle(fontSize: 18.0),
-              ),
-            )
-                : ListView.builder(
-              itemCount: tasks.length,
-              itemBuilder: (context, index) {
-                final task = tasks[index];
-                List<Widget> tags = [];
-                if (task['important']) {
-                  tags.add(_buildTag('Important', Colors.red));
-                }
-                if (task['urgent']) {
-                  tags.add(_buildTag('Urgent', Colors.orange));
-                }
-
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: ListTile(
-                    leading: Checkbox(
-                      value: task['completed'] ?? false,
-                      onChanged: (value) {
-                        setState(() {
-                          task['completed'] = value;
-                          if (value == true) {
-                            completedTasks.add(task);
-                            tasks.removeAt(index);
-                          }
-                        });
-                      },
-                    ),
-                    title: Text(task['task']!),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (task['note'] != null && task['note']!.isNotEmpty)
-                          Text(task['note']!),
-                        if (tags.isNotEmpty)
-                          Row(
-                            children: tags,
-                          ),
-                      ],
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          tasks.removeAt(index);
-                        });
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-            completedTasks.isEmpty
-                ? const Center(
-              child: Text(
-                'No completed tasks yet.',
-                style: TextStyle(fontSize: 18.0),
-              ),
-            )
-                : ListView.builder(
-              itemCount: completedTasks.length,
-              itemBuilder: (context, index) {
-                final task = completedTasks[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: ListTile(
-                    title: Text(task['task']!),
-                    subtitle: task['note'] != null && task['note']!.isNotEmpty
-                        ? Text(task['note']!)
-                        : null,
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          completedTasks.removeAt(index);
-                        });
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
+            _buildTaskList(pendingTasks, allowCheckbox: true),
+            _buildTaskList(completedTasks, allowCheckbox: false),
           ],
         ),
         floatingActionButton: FloatingActionButton(
@@ -187,7 +106,76 @@ class TaskListPageState extends State<TaskListPage> {
     );
   }
 
-  Widget _buildTag(String label, Color color) {
+  Widget _buildTaskList(List<Map<String, dynamic>> tasksToDisplay, {required bool allowCheckbox}) {
+    if (tasksToDisplay.isEmpty) {
+      return const Center(
+        child: Text(
+          'No tasks here!',
+          style: TextStyle(fontSize: 18.0),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: tasksToDisplay.length,
+      itemBuilder: (context, index) {
+        final task = tasksToDisplay[index];
+        List<Widget> tags = [];
+        if (task['important']) {
+          tags.add(const TagWidget(label: 'Important', color: Colors.red));
+        }
+        if (task['urgent']) {
+          tags.add(const TagWidget(label: 'Urgent', color: Colors.orange));
+        }
+
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: ListTile(
+            leading: allowCheckbox
+                ? Checkbox(
+              value: task['completed'] ?? false,
+              onChanged: (value) {
+                setState(() {
+                  task['completed'] = value;
+                });
+              },
+            )
+                : null,
+            title: Text(task['task']!),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (task['note'] != null && task['note']!.isNotEmpty)
+                  Text(task['note']!),
+                if (tags.isNotEmpty)
+                  Row(
+                    children: tags,
+                  ),
+              ],
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () {
+                setState(() {
+                  tasks.remove(task);
+                });
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class TagWidget extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const TagWidget({super.key, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(right: 5),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
